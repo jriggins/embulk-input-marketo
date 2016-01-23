@@ -5,6 +5,7 @@ module Embulk
     module Marketo
       class Lead < Base
         TIMESLICE_COUNT_PER_TASK = 24
+        DEFAULT_INTERVAL_SECONDS = 3600
 
         Plugin.register_input("marketo/lead", self)
 
@@ -32,8 +33,10 @@ module Embulk
         def self.transaction(config, &control)
           endpoint_url = config.param(:endpoint, :string)
 
+          interval_seconds = config.param(:interval_seconds, :integer, default: DEFAULT_INTERVAL_SECONDS)
+
           range = format_range(config)
-          ranges = timeslice(range[:from], range[:to], TIMESLICE_COUNT_PER_TASK)
+          ranges = timeslice(range[:from], range[:to], TIMESLICE_COUNT_PER_TASK, interval_seconds)
 
           append_processed_time_column = config.param(:append_processed_time_column, :bool, default: true)
 
@@ -44,6 +47,7 @@ module Embulk
             encryption_key: config.param(:encryption_key, :string),
             from_datetime: range[:from],
             to_datetime: range[:to],
+            interval_seconds: interval_seconds,
             ranges: ranges,
             retry_initial_wait_sec: config.param(:retry_initial_wait_sec, :integer, default: 1),
             retry_limit: config.param(:retry_limit, :integer, default: 5),

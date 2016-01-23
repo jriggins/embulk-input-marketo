@@ -72,6 +72,47 @@ module Embulk
           end
         end
 
+        def test_interval_seconds_default
+          settings = {
+              endpoint: "https://marketo.example.com",
+              wsdl: "https://marketo.example.com/?wsdl",
+              user_id: "user_id",
+              encryption_key: "TOPSECRET",
+              columns: [
+                  {"name" => "Name", "type" => "string"},
+              ],
+              from_datetime: Time.now,
+              to_datetime: Time.now + 3600,
+          }
+          config = DataSource[settings.to_a]
+
+          Lead.transaction(config) do |task, columns, count|
+            assert_equal(task[:interval_seconds],
+                         Embulk::Input::Marketo::Lead::DEFAULT_INTERVAL_SECONDS)
+          end
+        end
+
+        def test_interval_seconds_1_day
+          hours_in_day = 60 * 60 * 24
+          settings = {
+            endpoint: "https://marketo.example.com",
+            wsdl: "https://marketo.example.com/?wsdl",
+            user_id: "user_id",
+            encryption_key: "TOPSECRET",
+            columns: [
+              {"name" => "Name", "type" => "string"},
+            ],
+            from_datetime: Time.now,
+            to_datetime: Time.now + 3600,
+            interval_seconds: hours_in_day,
+          }
+          config = DataSource[settings.to_a]
+
+          Lead.transaction(config) do |task, columns, count|
+            assert_equal(task[:interval_seconds], hours_in_day)
+          end
+        end
+
         def test_wrong_type
           control = proc {} # dummy
 
@@ -304,6 +345,8 @@ module Embulk
               data do
                 {
                   "8/1 to 8/2" => ["2015-08-01 00:00:00", "2015-08-02 00:00:00", 24],
+                  "1 hour" => ["2015-08-01 00:00:00", "2015-08-01 01:00:00", 1],
+                  "into hour 2" => ["2015-08-01 00:00:00", "2015-08-01 01:12:34", 2],
                   "over the days" => ["2015-08-01 19:00:00", "2015-08-03 05:00:00", 34],
                   "odd times" => ["2015-08-01 11:11:11", "2015-08-01 22:22:22", 12],
                 }
@@ -311,6 +354,28 @@ module Embulk
               def test_generate_time_range_by_1hour(data)
                 from, to, count = data
                 range = Lead.generate_time_range(from, to)
+                assert_equal count, range.length
+              end
+
+              # Random-looking end times are to represent situations in which
+              # end time wasn't explicitly set and would have been set to Time.now
+              # at the time the script would've been run.
+              data do
+                {
+                  "5/5 to 5/6 (exclusive)" => ["2015-05-05 00:00:00", "2015-05-06 00:00:00", 1],
+                  "5/5 to 5/5" => ["2015-05-05 00:00:00", "2015-05-05 11:13:42", 1],
+                  "8/1 to 8/2" => ["2015-08-01 00:00:00", "2015-08-02 01:31:59", 2],
+                  "1/1/2015 to 12/31/2015 (year)" => ["2015-01-01 00:00:00", "2015-12-31 11:21:45", 365],
+                  "1/1/2016 to 12/31/2016 (leap year)" => ["2016-01-01 00:00:00", "2016-12-31 05:11:59", 366],
+                  "1/1/2010 to 12/31/2016" => ["2010-01-01 00:00:00", "2016-12-31 04:44:28", 2557],
+                }
+              end
+              def test_generate_time_range_by_1day(data)
+                Embulk.logger.warn "1day test"
+                from, to, count = data
+                _24_hours_in_seconds = 3600*24
+                range = Lead.generate_time_range(from, to, _24_hours_in_seconds)
+                Embulk.logger.info "Range: #{range}"
                 assert_equal count, range.length
               end
 
@@ -362,6 +427,44 @@ module Embulk
                 end
               end
               assert_equal(expect, Lead.timeslice(from, to, count))
+            end
+
+            def test_timeslice_days
+              from = "2015-08-01 00:00:00"
+              to = "2015-08-12 10:23:01"
+              count = 5
+              day_interval = 3600 * 24
+
+              raw_expect = [
+                  [
+                      {from: "2015-08-01 00:00:00", to: "2015-08-02 00:00:00"},
+                      {from: "2015-08-02 00:00:00", to: "2015-08-03 00:00:00"},
+                      {from: "2015-08-03 00:00:00", to: "2015-08-04 00:00:00"},
+                      {from: "2015-08-04 00:00:00", to: "2015-08-05 00:00:00"},
+                      {from: "2015-08-05 00:00:00", to: "2015-08-06 00:00:00"},
+                  ],
+                  [
+                      {from: "2015-08-06 00:00:00", to: "2015-08-07 00:00:00"},
+                      {from: "2015-08-07 00:00:00", to: "2015-08-08 00:00:00"},
+                      {from: "2015-08-08 00:00:00", to: "2015-08-09 00:00:00"},
+                      {from: "2015-08-09 00:00:00", to: "2015-08-10 00:00:00"},
+                      {from: "2015-08-10 00:00:00", to: "2015-08-11 00:00:00"},
+                  ],
+                  [
+                      {from: "2015-08-11 00:00:00", to: "2015-08-12 00:00:00"},
+                      {from: "2015-08-12 00:00:00", to: "2015-08-12 10:23:01"},
+                  ]
+              ]
+
+              expect = raw_expect.map do |slice|
+                slice.map do |range|
+                  {
+                      "from" => Time.parse(range[:from]),
+                      "to" => Time.parse(range[:to])
+                  }
+                end
+              end
+              assert_equal(expect, Lead.timeslice(from, to, count, day_interval))
             end
           end
 

@@ -60,11 +60,11 @@ module Embulk
           }
         end
 
-        def self.timeslice(from, to, count)
-          generate_time_range(from, to).each_slice(count).to_a
+        def self.timeslice(from, to, count, interval = 3600)
+          generate_time_range(from, to, interval).each_slice(count).to_a
         end
 
-        def self.generate_time_range(from, to)
+        def self.generate_time_range(from, to, interval = 3600)
           # e.g. from = 2010-01-01 15:00, to = 2010-01-03 09:30
           # convert to such array:
           # [
@@ -84,7 +84,7 @@ module Embulk
           result = []
           since = from
           while since < to
-            next_since = since + 3600
+            next_since = since + interval
             if to < next_since
               next_since = to
             end

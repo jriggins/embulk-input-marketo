@@ -43,6 +43,7 @@ Below parameters are shown in "Admin" > "Web Services" page in Marketo.
 - **encryption_key** Your encryption key (string, reqiured)
 - **from_datetime** Fetch leads since this time (string, required)
 - **to_datetime** Fetch leads until this time (string, default: Time.now)
+- **interval_seconds** Effectively splits the date range into a series of chunks (integer, default: 3600 seconds (1 hour))
 - **retry_initial_wait_sec** Wait seconds for exponential backoff initial value (integer, default: 1)
 - **retry_limit**: Try to retry this times (integer, default: 5)
 - **append_processed_time_column**: If you want the column for processed time (boolean, default: true)
@@ -75,6 +76,7 @@ in:
   user_id: user_ABC123
   encryption_key: TOPSECRET
   from_datetime: "2015-06-30"
+  interval_seconds: 86400 # 1 day
 out:
   type: stdout
 ```
